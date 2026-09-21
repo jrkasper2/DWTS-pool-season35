@@ -82,7 +82,7 @@ declare p players; t uuid;
 begin
   if p_pin !~ '^[0-9]{4}$' then raise exception 'PIN must be 4 digits'; end if;
   insert into players(first_name,last_name,username,pin_hash,avatar)
-  values(trim(p_first_name),trim(p_last_name),lower(trim(p_username)),crypt(p_pin,gen_salt('bf')),coalesce(nullif(p_avatar,''),'🪩'))
+  values(trim(p_first_name),trim(p_last_name),lower(trim(p_username)),extensions.crypt(p_pin,extensions.gen_salt('bf')),coalesce(nullif(p_avatar,''),'🪩'))
   returning * into p;
   insert into player_sessions(player_id) values(p.id) returning token into t;
   return jsonb_build_object('token',t,'player',to_jsonb(p)-'pin_hash');
@@ -92,7 +92,7 @@ create or replace function login_player(p_username text,p_pin text)
 returns jsonb language plpgsql security definer as $$
 declare p players; t uuid;
 begin
-  select * into p from players where username=lower(trim(p_username)) and pin_hash=crypt(p_pin,pin_hash);
+  select * into p from players where username=lower(trim(p_username)) and pin_hash=extensions.crypt(p_pin,pin_hash);
   if p.id is null then raise exception 'Username or PIN did not match'; end if;
   insert into player_sessions(player_id) values(p.id) returning token into t;
   return jsonb_build_object('token',t,'player',to_jsonb(p)-'pin_hash');
