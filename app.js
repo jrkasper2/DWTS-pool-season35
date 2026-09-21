@@ -314,7 +314,7 @@
         list.appendChild(rEl);
 
         if(!p&&!closed){
-          const sels=$("select[data-score]",rEl),total=$("[data-total]",rEl);
+          const sels=$$("select[data-score]",rEl),total=$("[data-total]",rEl);
           const calc=()=>{
             const values=sels.map(s=>Number(s.value));
             total.textContent=values.every(Boolean)?values.reduce((a,b)=>a+b,0):"—";
