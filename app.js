@@ -4,6 +4,8 @@
   const $$ = (s,r=document)=>[...r.querySelectorAll(s)];
   const esc = s=>String(s??"").replace(/[&<>'"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
   const SESSION_KEY = "mirrorball35_session";
+  const RETURNING_KEY = "mirrorball35_returning";
+  const LAST_USER_KEY = "mirrorball35_last_username";
   const AVATARS = ["🪩","✨","💃","🕺","⭐","🔟","👠","🎩","💜","🎶"];
   const state = { user:null, view:"home", sound:true, ballroom:null, game:null };
 
@@ -29,6 +31,8 @@
 
   const token=()=>localStorage.getItem(SESSION_KEY)||"";
   const setToken=t=>t?localStorage.setItem(SESSION_KEY,t):localStorage.removeItem(SESSION_KEY);
+  const isReturning=()=>localStorage.getItem(RETURNING_KEY)==="1";
+  const markReturning=username=>{ localStorage.setItem(RETURNING_KEY,"1"); if(username)localStorage.setItem(LAST_USER_KEY,username); };
   const now=()=>Date.now();
   const dt=x=>x?new Date(x):null;
   const fmtDate=x=>x?new Intl.DateTimeFormat("en-US",{weekday:"long",month:"long",day:"numeric",hour:"numeric",minute:"2-digit",timeZone:"America/New_York"}).format(new Date(x))+" ET":"";
@@ -89,6 +93,8 @@
   function nav(on) {
     $("#nav").classList.toggle("hidden",!on);
     $("#profileChip").classList.toggle("hidden",!on);
+    const homeBtn=$("#homeBtn");
+    if (homeBtn) homeBtn.classList.toggle("hidden",!on || state.view==="home");
     if (!on) return;
     $("#profileChip").innerHTML='<span class="mini-avatar">'+avatar(state.user.avatar)+'</span> @'+esc(state.user.username);
     $$("[data-view]").forEach(b=>b.classList.toggle("active",b.dataset.view===state.view));
@@ -101,6 +107,7 @@
     render();
   };
   $("#profileChip").onclick=()=>{state.view="profile";render()};
+  if ($("#homeBtn")) $("#homeBtn").onclick=()=>{state.view="home";render()};
 
   async function render() {
     if (!state.user) { nav(false);auth();return; }
@@ -115,7 +122,8 @@
   }
 
   function auth() {
-    $("#main").innerHTML='<div class="auth-wrap"><section class="card auth"><div class="kicker">WELCOME TO THE BALLROOM</div><h2>Join the Mirrorball Pool</h2><p class="muted">Create your player once. After that, come back with your username and 4-digit PIN.</p><div class="tabs"><button id="newTab" class="active">First time</button><button id="returnTab">Returning</button></div><div id="authForm"></div></section></div>';
+    const returning=isReturning();
+    $("#main").innerHTML='<div class="auth-wrap"><section class="card auth"><button id="backLanding" class="btn ghost" style="margin-bottom:14px">← Back to homepage</button><div class="kicker">'+(returning?'WELCOME BACK':'WELCOME TO THE BALLROOM')+'</div><h2>'+(returning?'Return to the Mirrorball Pool':'Join the Mirrorball Pool')+'</h2><p class="muted">'+(returning?'We recognize this browser. Sign back in with your username and 4-digit PIN.':'Create your player once. After that, this browser will remember that you are a returning player.')+'</p><div class="tabs"><button id="newTab">First time</button><button id="returnTab">Returning</button></div><div id="authForm"></div></section></div>';
     const swap=mode=>{
       const first=mode==="new";
       $("#newTab").classList.toggle("active",first);
@@ -125,7 +133,8 @@
     };
     $("#newTab").onclick=()=>swap("new");
     $("#returnTab").onclick=()=>swap("return");
-    swap("new");
+    $("#backLanding").onclick=()=>location.reload();
+    swap(returning?"return":"new");
   }
 
   function signupForm() {
@@ -133,7 +142,8 @@
   }
 
   function loginForm() {
-    return '<div class="field"><label>Username</label><input id="loginUser" autocomplete="username"></div><div class="field"><label>4-digit PIN</label><input id="loginPin" inputmode="numeric" maxlength="4" type="password"></div><button id="login" class="btn primary" style="width:100%;margin-top:8px">Enter the Ballroom</button><div id="authError" class="error"></div>';
+    const last=esc(localStorage.getItem(LAST_USER_KEY)||"");
+    return '<div class="field"><label>Username</label><input id="loginUser" autocomplete="username" value="'+last+'"></div><div class="field"><label>4-digit PIN</label><input id="loginPin" inputmode="numeric" maxlength="4" type="password" autofocus></div><button id="login" class="btn primary" style="width:100%;margin-top:8px">Enter the Ballroom</button><div id="authError" class="error"></div>';
   }
 
   async function compressImage(file) {
@@ -176,7 +186,7 @@
       try {
         $("#signup").disabled=true;$("#signup").textContent="Creating your player…";
         const x=await rpc("register_player",{p_first_name:first,p_last_name:last,p_username:username,p_pin:pin,p_avatar:chosen});
-        setToken(x.token);state.user=x.player;state.ballroom=null;state.game=null;await render();
+        setToken(x.token);markReturning(x.player?.username||username);state.user=x.player;state.ballroom=null;state.game=null;await render();
       } catch(e) {
         $("#authError").textContent=e.message;$("#signup").disabled=false;$("#signup").textContent="Create my player";
       }
@@ -188,7 +198,7 @@
       try {
         $("#login").disabled=true;$("#login").textContent="Opening the ballroom…";
         const x=await rpc("login_player",{p_username:$("#loginUser").value.trim(),p_pin:$("#loginPin").value.trim()});
-        setToken(x.token);state.user=x.player;state.ballroom=null;state.game=null;await render();
+        setToken(x.token);markReturning(x.player?.username||$("#loginUser").value.trim());state.user=x.player;state.ballroom=null;state.game=null;await render();
       } catch(e) {
         $("#authError").textContent=e.message;$("#login").disabled=false;$("#login").textContent="Enter the Ballroom";
       }
