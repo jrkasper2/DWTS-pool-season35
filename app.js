@@ -208,8 +208,9 @@
     const ep=state.ballroom?.episode;
     const couples=state.ballroom?.couples||[];
     const judges=Array.isArray(ep?.judges)?ep.judges:["Carrie Ann","Derek","Bruno"];
-    const preds=Object.fromEntries((state.game?.predictions||[]).map(p=>[p.couple_slug,p]));
-    return {ep,couples,judges,preds,bonus:state.game?.bonus||null};
+    const preds=Object.fromEntries((state.game?.predictions||[]).map(p=>[p.routine_id,p]));
+    const routines=couples.flatMap(c=>(c.routines||[]).map(r=>({...r,couple_slug:c.slug,celebrity:c.celebrity,pro:c.pro})));
+    return {ep,couples,judges,routines,preds,bonus:state.game?.bonus||null};
   }
 
   function episodeStatus(ep) {
@@ -221,10 +222,10 @@
   }
 
   async function home() {
-    const {ep,couples,preds}=current();
+    const {ep,couples,routines,preds}=current();
     if(!ep)return seasonComplete();
-    const st=episodeStatus(ep),locked=Object.keys(preds).length;
-    $("#main").innerHTML='<section class="card hero"><div class="kicker">WEEK '+ep.week+' · '+esc(ep.title).toUpperCase()+'</div><h1>Race for the Mirrorball</h1><p>'+esc(fmtDate(ep.starts_at))+'</p><div class="pillrow"><span class="pill '+st.kind+'">'+esc(st.label)+'</span><span class="pill">'+locked+'/'+couples.length+' couples locked</span><span class="pill">🔒 friends’ picks hidden until the episode ends</span></div><button id="goPicks" class="btn primary">Make predictions</button> <button id="shareBtn" class="btn ghost">Share the pool</button> <button id="howBtn" class="btn ghost">How scoring works</button></section><div class="grid2"><section class="card quick"><div class="kicker">YOUR PROGRESS</div><div class="big">'+locked+'/'+couples.length+'</div><div class="muted tiny">couple predictions locked for Week '+ep.week+'</div></section><section class="card quick"><div class="kicker">OFFICIAL RESULTS</div><div class="big">Auto</div><div class="muted tiny">scores sync after the episode and recalculate the leaderboard</div></section></div><section class="card quick source-card"><div class="kicker">DATA SOURCES</div><p class="muted tiny">Weekly score tables are synced automatically from the structured Season 35 scorecard, with ABC, Parade, and Entertainment Weekly kept as reference sources.</p></section>';
+    const st=episodeStatus(ep),locked=Object.keys(preds).length,total=routines.length||couples.length;
+    $("#main").innerHTML='<section class="card hero"><div class="kicker">WEEK '+ep.week+' · '+esc(ep.title).toUpperCase()+'</div><h1>Race for the Mirrorball</h1><p>'+esc(fmtDate(ep.starts_at))+'</p><div class="pillrow"><span class="pill '+st.kind+'">'+esc(st.label)+'</span><span class="pill">'+locked+'/'+total+' routines locked</span><span class="pill">🔒 friends’ picks hidden until the episode ends</span></div><button id="goPicks" class="btn primary">Make predictions</button> <button id="shareBtn" class="btn ghost">Share the pool</button> <button id="howBtn" class="btn ghost">How scoring works</button></section><div class="grid2"><section class="card quick"><div class="kicker">YOUR PROGRESS</div><div class="big">'+locked+'/'+total+'</div><div class="muted tiny">routine predictions locked for Week '+ep.week+'</div></section><section class="card quick"><div class="kicker">OFFICIAL RESULTS</div><div class="big">Auto</div><div class="muted tiny">scores sync after the episode and recalculate the leaderboard</div></section></div><section class="card quick source-card"><div class="kicker">DATA SOURCES</div><p class="muted tiny">Weekly score tables are synced automatically from the structured Season 35 scorecard, with ABC, Parade, and Entertainment Weekly kept as reference sources.</p></section>';
     $("#goPicks").onclick=()=>{state.view="picks";render();};
     $("#shareBtn").onclick=sharePool;
     $("#howBtn").onclick=()=>showScoring();
@@ -268,35 +269,52 @@
   }
 
   async function picks() {
-    const {ep,couples,judges,preds,bonus}=current();
+    const {ep,couples,judges,routines,preds,bonus}=current();
     if(!ep)return seasonComplete();
     const closed=now()>=dt(ep.ends_at).getTime();
-    $("#main").innerHTML='<div class="section-head"><div><div class="kicker">WEEK '+ep.week+'</div><h2 class="section-title">'+esc(ep.title)+'</h2><div class="muted tiny">'+esc(fmtDate(ep.starts_at))+'</div></div><div class="muted tiny">'+Object.keys(preds).length+'/'+couples.length+' locked</div></div>'+(closed?'<section class="card quick notice"><strong>🔒 This episode is closed.</strong><div class="muted tiny">Predictions can no longer be submitted. Results will populate automatically after verification.</div></section>':'<section class="card quick notice"><strong>Once you lock a prediction, it cannot be changed.</strong><div class="muted tiny">Open predictions stay available through the live episode until it ends.</div></section>')+'<div id="couples"></div><section class="card bonus"><div class="kicker">BONUS PICKS</div><h3>Top score + elimination</h3><p class="muted tiny">5 points each. These are permanent once locked.</p><div class="row2"><div class="field"><label>Highest-scoring couple</label><select id="highest" '+(bonus||closed?"disabled":"")+'><option value="">Choose…</option>'+couples.map(c=>'<option value="'+c.slug+'" '+(bonus?.highest_slug===c.slug?"selected":"")+'>'+esc(c.celebrity)+'</option>').join("")+'</select></div><div class="field"><label>Eliminated couple</label><select id="elim" '+(bonus||closed?"disabled":"")+'><option value="">Choose…</option>'+couples.map(c=>'<option value="'+c.slug+'" '+(bonus?.eliminated_slug===c.slug?"selected":"")+'>'+esc(c.celebrity)+'</option>').join("")+'</select></div></div>'+(bonus?'<div class="locked">✓ Bonus picks locked</div>':closed?'<div class="muted tiny">Bonus picks closed.</div>':'<button id="lockBonus" class="btn secondary">Lock bonus picks</button>')+'</section>';
+    const totalRoutines=routines.length||couples.length;
+
+    $("#main").innerHTML='<div class="section-head"><div><div class="kicker">WEEK '+ep.week+'</div><h2 class="section-title">'+esc(ep.title)+'</h2><div class="muted tiny">'+esc(fmtDate(ep.starts_at))+'</div></div><div class="muted tiny">'+Object.keys(preds).length+'/'+totalRoutines+' routines locked</div></div>'+(closed?'<section class="card quick notice"><strong>🔒 This episode is closed.</strong><div class="muted tiny">Predictions can no longer be submitted. Results will populate automatically after verification.</div></section>':'<section class="card quick notice"><strong>Once you lock a routine, it cannot be changed.</strong><div class="muted tiny">Open predictions stay available through the live episode until it ends. On weeks with multiple scored dances, each routine gets its own prediction.</div></section>')+'<div id="couples"></div><section class="card bonus"><div class="kicker">BONUS PICKS</div><h3>Top score + elimination</h3><p class="muted tiny">5 points each. Highest score is based on the couple’s full episode total when there are multiple scored routines.</p><div class="row2"><div class="field"><label>Highest-scoring couple</label><select id="highest" '+(bonus||closed?"disabled":"")+'><option value="">Choose…</option>'+couples.map(c=>'<option value="'+c.slug+'" '+(bonus?.highest_slug===c.slug?"selected":"")+'>'+esc(c.celebrity)+'</option>').join("")+'</select></div><div class="field"><label>Eliminated couple</label><select id="elim" '+(bonus||closed?"disabled":"")+'><option value="">Choose…</option>'+couples.map(c=>'<option value="'+c.slug+'" '+(bonus?.eliminated_slug===c.slug?"selected":"")+'>'+esc(c.celebrity)+'</option>').join("")+'</select></div></div>'+(bonus?'<div class="locked">✓ Bonus picks locked</div>':closed?'<div class="muted tiny">Bonus picks closed.</div>':'<button id="lockBonus" class="btn secondary">Lock bonus picks</button>')+'</section>';
 
     const box=$("#couples");
-    couples.forEach(c=>{
-      const p=preds[c.slug],el=document.createElement("section");
+    couples.forEach(couple=>{
+      const el=document.createElement("section");
       el.className="card couple";
-      const detail=[c.dance_style,c.song].filter(Boolean).join(" · ")||"Dance details coming soon";
-      el.innerHTML='<div class="couple-head"><div class="names"><strong>'+esc(c.celebrity)+'</strong><small>with '+esc(c.pro)+'</small><div class="dance">'+esc(detail)+'</div></div>'+(p?'<span class="pill locked">🔒 '+p.predicted_total+'</span>':closed?'<span class="pill">CLOSED</span>':'<span class="pill">OPEN</span>')+'</div>'+(p?'<div class="result-row"><span>'+judges.map((j,i)=>esc(j)+" "+(p.judge_scores?.[i]??"—")).join(" · ")+'</span><strong>'+p.predicted_total+'</strong></div>':closed?'<p class="muted tiny">No prediction was locked for this couple.</p>':'<div class="judges">'+judges.map((j,i)=>'<div class="judge"><label>'+esc(j)+'</label><select data-score="'+i+'">'+scoreOptions()+'</select></div>').join("")+'</div><div class="total">Predicted total: <span data-total>—</span></div><button class="btn secondary" data-lock="'+c.slug+'">Lock this couple</button>');
+      const cr=(couple.routines&&couple.routines.length)?couple.routines:[{id:ep.slug+":"+couple.slug+":1",slot:1,label:"Main routine",dance_style:null,song:null}];
+      const lockedCount=cr.filter(r=>preds[r.id]).length;
+      el.innerHTML='<div class="couple-head"><div class="names"><strong>'+esc(couple.celebrity)+'</strong><small>with '+esc(couple.pro)+'</small></div><span class="pill '+(lockedCount===cr.length?"locked":"")+'">'+lockedCount+'/'+cr.length+' locked</span></div><div class="routine-list"></div>';
+      const list=$(".routine-list",el);
+
+      cr.forEach(routine=>{
+        const p=preds[routine.id];
+        const rEl=document.createElement("div");
+        rEl.className="routine-block";
+        const multi=cr.length>1;
+        const detail=[routine.dance_style,routine.song].filter(Boolean).join(" · ")||"Dance details coming soon";
+        const routineTitle=multi?('<div class="routine-label">'+esc(routine.label||("Routine "+routine.slot))+'</div>'):"";
+        rEl.innerHTML=routineTitle+'<div class="dance">'+esc(detail)+'</div>'+(p?'<div class="result-row"><span>'+judges.map((j,i)=>esc(j)+" "+(p.judge_scores?.[i]??"—")).join(" · ")+'</span><span><strong>'+p.predicted_total+'</strong> <span class="pill locked">🔒</span></span></div>':closed?'<p class="muted tiny">No prediction was locked for this routine.</p>':'<div class="judges">'+judges.map((j,i)=>'<div class="judge"><label>'+esc(j)+'</label><select data-score="'+i+'">'+scoreOptions()+'</select></div>').join("")+'</div><div class="total">Predicted total: <span data-total>—</span></div><button class="btn secondary" data-lock-routine="'+esc(routine.id)+'">Lock this routine</button>');
+        list.appendChild(rEl);
+
+        if(!p&&!closed){
+          const sels=$("select[data-score]",rEl),total=$("[data-total]",rEl);
+          const calc=()=>{
+            const values=sels.map(s=>Number(s.value));
+            total.textContent=values.every(Boolean)?values.reduce((a,b)=>a+b,0):"—";
+          };
+          sels.forEach(s=>s.onchange=calc);
+          $("[data-lock-routine]",rEl).onclick=async()=>{
+            const scores=sels.map(s=>Number(s.value));
+            if(!scores.every(Boolean))return alert("Choose a score for every judge first.");
+            const label=multi?(routine.label||("Routine "+routine.slot)):"this routine";
+            if(!confirm("Lock "+couple.celebrity+" — "+label+"? You will not be able to change these scores."))return;
+            try{
+              await rpc("lock_routine_prediction",{p_token:token(),p_routine_id:routine.id,p_judge_scores:scores});
+              await refreshGame();render();
+            }catch(e){alert(e.message);}
+          };
+        }
+      });
       box.appendChild(el);
-      if(!p&&!closed){
-        const sels=$$("select[data-score]",el),total=$("[data-total]",el);
-        const calc=()=>{
-          const v=sels.map(s=>Number(s.value));
-          total.textContent=v.every(Boolean)?v.reduce((a,b)=>a+b,0):"—";
-        };
-        sels.forEach(s=>s.onchange=calc);
-        $("[data-lock]",el).onclick=async()=>{
-          const scores=sels.map(s=>Number(s.value));
-          if(!scores.every(Boolean))return alert("Choose a score for every judge first.");
-          if(!confirm("Lock "+c.celebrity+"? You will not be able to change these scores."))return;
-          try{
-            await rpc("lock_prediction",{p_token:token(),p_episode_slug:ep.slug,p_couple_slug:c.slug,p_judge_scores:scores});
-            await refreshGame();render();
-          }catch(e){alert(e.message);}
-        };
-      }
     });
 
     if(!bonus&&!closed)$("#lockBonus").onclick=async()=>{
@@ -329,18 +347,21 @@
       return;
     }
 
-    const ep=x.episode,results=x.results||[],picks=x.picks||[],bonuses=x.bonus||[];
-    const currentCouples=state.ballroom?.couples||[];
+    const ep=x.episode,results=x.results||[],routineResults=x.routine_results||[],picks=x.picks||[],bonuses=x.bonus||[];
     const nameMap={};
-    for(const c of currentCouples)nameMap[c.slug]=c.celebrity;
+    for(const c of (state.ballroom?.couples||[]))nameMap[c.slug]=c.celebrity;
     for(const r of results)if(r.celebrity)nameMap[r.couple_slug]=r.celebrity;
     for(const p of picks)if(p.celebrity)nameMap[p.couple_slug]=p.celebrity;
-    const resultMap=Object.fromEntries(results.map(r=>[r.couple_slug,r]));
+    const routineResultMap=Object.fromEntries(routineResults.map(r=>[r.routine_id,r]));
     const grouped={};
     picks.forEach(p=>(grouped[p.username]??=[]).push(p));
     const userBonus=Object.fromEntries(bonuses.map(b=>[b.username,b]));
 
-    $("#main").innerHTML='<div class="section-head"><div><div class="kicker">WEEK '+ep.week+' RESULTS</div><h2 class="section-title">'+esc(ep.title)+'</h2></div><span class="pill '+(ep.results_verified?"locked":"")+'">'+(ep.results_verified?"✓ Verified":"Syncing…")+'</span></div><section class="card quick"><h3>Friends’ picks are revealed ✨</h3><p class="muted">'+(results.length?"Official scores are in and points have been calculated.":"The episode is over, so picks are visible. Official scores are still syncing.")+'</p></section>'+(results.length?'<section class="card quick results-table"><div class="kicker">OFFICIAL SCORES</div>'+results.map(r=>'<div class="result-row"><span>'+esc(nameMap[r.couple_slug]||prettySlug(r.couple_slug))+(r.eliminated?' <span class="eliminated">· eliminated</span>':'')+'</span><strong>'+r.total+(r.highest?' 🏆':'')+'</strong></div>').join("")+'</section>':'')+Object.entries(grouped).map(([u,ps])=>'<section class="card quick player-reveal"><div class="reveal-head"><h3>@'+esc(u)+'</h3><strong>'+ps.reduce((a,p)=>a+Number(p.points||0),0)+' dance pts</strong></div>'+ps.sort((a,b)=>(nameMap[a.couple_slug]||a.couple_slug).localeCompare(nameMap[b.couple_slug]||b.couple_slug)).map(p=>{const r=resultMap[p.couple_slug];return '<div class="result-row"><span>'+esc(nameMap[p.couple_slug]||prettySlug(p.couple_slug))+' <small class="muted">'+(p.judge_scores||[]).join(" / ")+'</small></span><span><strong>'+p.predicted_total+'</strong>'+(r?' <small class="muted">vs '+r.total+'</small>':'')+' <span class="points-chip">+'+(p.points||0)+'</span></span></div>';}).join("")+(userBonus[u]?'<div class="bonus-reveal tiny muted">Bonus picks: highest '+esc(userBonus[u].highest_celebrity||nameMap[userBonus[u].highest_slug]||prettySlug(userBonus[u].highest_slug))+' · eliminated '+esc(userBonus[u].eliminated_celebrity||nameMap[userBonus[u].eliminated_slug]||prettySlug(userBonus[u].eliminated_slug))+' · <strong>+'+(userBonus[u].points||0)+' pts</strong></div>':'')+'</section>').join("")+(results[0]?.source_url?'<p class="tiny muted source-link">Official-score table source: <a href="'+esc(results[0].source_url)+'" target="_blank" rel="noopener">Season 35 weekly scorecard ↗</a></p>':'');
+    const official=results.length
+      ? '<section class="card quick results-table"><div class="kicker">OFFICIAL EPISODE TOTALS</div>'+results.map(r=>'<div class="result-row"><span>'+esc(r.celebrity||nameMap[r.couple_slug]||prettySlug(r.couple_slug))+(r.eliminated?' <span class="eliminated">· eliminated</span>':'')+'</span><strong>'+r.total+(r.highest?' 🏆':'')+'</strong></div>').join("")+'</section>'
+      : '';
+
+    $("#main").innerHTML='<div class="section-head"><div><div class="kicker">WEEK '+ep.week+' RESULTS</div><h2 class="section-title">'+esc(ep.title)+'</h2></div><span class="pill '+(ep.results_verified?"locked":"")+'">'+(ep.results_verified?"✓ Verified":"Syncing…")+'</span></div><section class="card quick"><h3>Friends’ picks are revealed ✨</h3><p class="muted">'+(results.length?"Official scores are in and points have been calculated.":"The episode is over, so picks are visible. Official scores are still syncing.")+'</p></section>'+official+Object.entries(grouped).map(([u,ps])=>'<section class="card quick player-reveal"><div class="reveal-head"><h3>@'+esc(u)+'</h3><strong>'+ps.reduce((a,p)=>a+Number(p.points||0),0)+' routine pts</strong></div>'+ps.sort((a,b)=>((a.celebrity||"")+a.slot).localeCompare((b.celebrity||"")+b.slot)).map(p=>{const rr=routineResultMap[p.routine_id];const dance=[p.dance_style,p.song].filter(Boolean).join(" · ");return '<div class="result-row"><span>'+esc(p.celebrity||nameMap[p.couple_slug]||prettySlug(p.couple_slug))+(dance?' <small class="muted">· '+esc(dance)+'</small>':'')+'<br><small class="muted">'+(p.judge_scores||[]).join(" / ")+'</small></span><span><strong>'+p.predicted_total+'</strong>'+(rr?' <small class="muted">vs '+rr.total+'</small>':'')+' <span class="points-chip">+'+(p.points||0)+'</span></span></div>';}).join("")+(userBonus[u]?'<div class="bonus-reveal tiny muted">Bonus picks: highest '+esc(userBonus[u].highest_celebrity||nameMap[userBonus[u].highest_slug]||prettySlug(userBonus[u].highest_slug))+' · eliminated '+esc(userBonus[u].eliminated_celebrity||nameMap[userBonus[u].eliminated_slug]||prettySlug(userBonus[u].eliminated_slug))+' · <strong>+'+(userBonus[u].points||0)+' pts</strong></div>':'')+'</section>').join("")+(results[0]?.source_url?'<p class="tiny muted source-link">Official-score table source: <a href="'+esc(results[0].source_url)+'" target="_blank" rel="noopener">Season 35 weekly scorecard ↗</a></p>':'');
   }
 
   const prettySlug=s=>String(s||"").replace(/[-_]/g," ").replace(/\b\w/g,m=>m.toUpperCase());
