@@ -1,62 +1,95 @@
 # Mirrorball Pool — Dancing With the Stars Season 35 🪩
 
-A fan-made Season 35 prediction pool for Julia's friend group.
+A mobile-friendly, fan-made prediction game for Julia's friend group.
 
-## Game rules
+## What players do
 
-Players predict:
-- every judge's individual paddle score for each couple
-- each couple's total score
+Each week, players predict:
+
+- every judge's individual paddle score for each active couple
+- the couple's total score, calculated automatically from the judge picks
 - the highest-scoring couple of the episode
 - the eliminated couple
 
-Scoring:
-- Exact total: **5 points**
+Once a prediction is locked, it cannot be edited. Players can keep making any still-open picks through the live episode until the episode ends. Everyone else's picks stay hidden until the episode is over.
+
+## Scoring
+
+- Exact couple total: **5 points**
 - 1 point away: **3 points**
 - 2 points away: **1 point**
 - Exact individual judge: **+1 point per judge**
 - Correct highest-scoring couple: **+5 points**
 - Correct elimination: **+5 points**
 
-Once a player locks a prediction, it cannot be changed. Friends' picks stay hidden until the episode ends.
+The scoring rules are shown during first-time onboarding and can also be reopened from the player's profile.
 
-## Player accounts
+## Accounts
 
-First visit:
+On the first visit, a player enters:
+
 - first name
 - last name
-- username
+- unique username
 - 4-digit PIN
-- choose a DWTS-style avatar or upload a profile photo
+- a themed avatar or an uploaded profile photo
 
-Returning visits use username + 4-digit PIN.
+Returning players use username + PIN. PINs are bcrypt-hashed in Postgres. Login attempts are throttled after repeated failures. Session tokens expire after 120 days.
 
-## Current state
+The public leaderboard shows usernames and avatars, not players' full names.
 
-The front-end experience is live in this repository and works in browser-preview mode using local storage. The repo also includes a Supabase schema for turning it into a shared multi-player game.
+## Shared multiplayer backend
 
-## Make the group-chat version fully shared
+Production data is stored in Supabase project **DWTS Season 35 Mirrorball Pool**.
 
-1. Create a Supabase project.
-2. Run `supabase/schema.sql` in the SQL editor.
-3. Put the project URL and anon key into `config.js`.
-4. Wire the client calls in `app.js` to the Supabase RPC functions.
-5. Add the score-sync Edge Function / scheduled job for automatic weekly scoring.
+The frontend calls controlled RPC functions for registration, login, locking predictions, leaderboard reads, and post-episode reveals. User-data tables have Row Level Security enabled and are not directly readable from the browser.
+
+## Automatic weekly updates
+
+A Supabase Edge Function named `sync-dwts` runs automatically every 30 minutes through Supabase Cron.
+
+It checks the structured Season 35 weekly score table and:
+
+1. updates dance styles and songs when a weekly table is available
+2. waits until the episode is over before accepting results
+3. requires a complete score row for every active couple
+4. parses each judge's individual score and validates that the paddles add up to the reported total
+5. identifies the week's highest-scoring couple or tied couples
+6. detects eliminated or withdrawn couples
+7. stores the verified results
+8. calculates every player's points
+9. removes eliminated couples from future prediction slates
+10. advances the site to the next episode
+
+If the source is incomplete, the job does nothing and tries again on the next scheduled run instead of publishing partial results.
+
+The automatic structured source is the Season 35 Wikipedia scorecard. ABC, Parade, Entertainment Weekly, and the Cosmopolitan cast guide are retained as reference sources for cast, scheduling, episode reporting, and verification.
+
+## Site files
+
+- `index.html` — application shell and ballroom entrance
+- `styles.css` — responsive DWTS-inspired visual theme
+- `app.js` — accounts, predictions, results, standings, profile, and onboarding
+- `assets.js` — project-supplied Mirrorball visual
+- `config.js` — public Supabase project configuration and reference links
+- `manifest.webmanifest` — installable web-app metadata
+- `supabase/functions/sync-dwts/` — source for the automatic results synchronizer
+- `.github/workflows/pages.yml` — GitHub Pages deployment
+
+## Intro audio
+
+Browsers require a user interaction before audio can start, so the entrance screen begins sound when the player taps **Enter the Ballroom**.
+
+The repository currently uses an original short ballroom/disco sting. The copyrighted *Dancing with the Stars* theme recording is not bundled. An authorized audio clip can be swapped into the same entrance flow.
 
 ## Hosting
 
-A GitHub Pages deployment workflow is included at `.github/workflows/pages.yml`. If GitHub Pages is set to **GitHub Actions** in repository settings, pushes to `main` deploy automatically.
+The site is configured to deploy with GitHub Pages from GitHub Actions.
 
-## Theme audio
+Expected public URL:
 
-The site currently uses a short original browser-generated ballroom sting on entry. The copyrighted Dancing with the Stars theme recording is not bundled. If you have an authorized clip, it can be connected without changing the game flow.
+**https://jrkasper2.github.io/DWTS-pool-season35/**
 
-## Sources / references
+## Disclaimer
 
-- ABC — official DWTS cast and schedule references
-- Cosmopolitan — Season 35 cast reference supplied for the project
-- Parade — planned judge-by-judge score source
-- Entertainment Weekly — planned recap / total-score verification source
-- Project-supplied Season 35 imagery — visual design reference
-
-This is an unofficial, noncommercial fan project and is not affiliated with ABC, Disney, BBC Studios, or Dancing with the Stars.
+This is an unofficial, noncommercial fan project and is not affiliated with ABC, Disney, BBC Studios, or *Dancing with the Stars*.
