@@ -93,22 +93,43 @@ function sectionForWeek(html, week) {
 
 function parseRows(section, couples) {
   const rows = [];
+  const slotCounts = {};
+  let lastCouple = null;
   const rowRe = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
+
   for (const rm of section.matchAll(rowRe)) {
     const cells = [];
     const cellRe = /<t[hd]\b[^>]*>([\s\S]*?)<\/t[hd]>/gi;
     for (const cm of rm[1].matchAll(cellRe)) cells.push(cleanHtml(cm[1]));
-    if (cells.length < 4) continue;
+    if (cells.length < 3) continue;
 
     const pair = norm(cells[0]);
-    const couple = couples.find(c => {
-      const celebFirst = norm(c.celebrity).split(" ")[0];
+    let couple = couples.find(c => {
+      const celeb = norm(c.celebrity);
+      const celebFirst = celeb.split(" ")[0];
       const proFirst = norm(c.pro).split(" ")[0];
-      return pair.startsWith(celebFirst + " ") && pair.includes(proFirst);
-    });
-    if (!couple) continue;
+      return (pair.startsWith(celeb + " ") || pair.startsWith(celebFirst + " "))
+        && pair.includes(proFirst);
+    }) || null;
 
-    const scoreCell = cells[1] || "";
+    let offset = 1;
+    if (couple) {
+      lastCouple = couple;
+    } else {
+      const firstCellLooksLikeScore = /^\s*(?:\d{1,2}\s*\([^)]+\)|—|-|TBD|)\s*$/i.test(cells[0] || "");
+      if (!lastCouple || !firstCellLooksLikeScore) continue;
+      couple = lastCouple;
+      offset = 0;
+    }
+
+    const scoreCell = cells[offset] || "";
+    const dance = cells[offset + 1] || null;
+    const music = cells[offset + 2] || null;
+    const result = cells[offset + 3] || "";
+
+    // Skip rows that clearly are not scored routines.
+    if (!dance && !music && !scoreCell) continue;
+
     const scoreMatch = scoreCell.match(/(\d{1,2})\s*\(([^)]+)\)/);
     let judgeScores = null;
     let total = null;
@@ -123,19 +144,58 @@ function parseRows(section, couples) {
       }
     }
 
+    const slot = (slotCounts[couple.slug] || 0) + 1;
+    slotCounts[couple.slug] = slot;
+
     rows.push({
       slug:couple.slug,
       celebrity:couple.celebrity,
       pro:couple.pro,
+      slot,
+      routineId:"",
       scoreCell,
       judgeScores,
       total,
-      dance:cells[2] || null,
-      music:cells[3] || null,
-      result:cells[4] || ""
+      dance,
+      music:music ? cleanMusic(music) : null,
+      result
     });
   }
   return rows;
+}
+
+function routineId(epSlug, coupleSlug, slot) {
+  return epSlug + ":" + coupleSlug + ":" + slot;
+}
+
+async function upsertRoutines(ep, parsed) {
+  const routineRows = parsed.map(r=>({
+    id:routineId(ep.slug,r.slug,r.slot),
+    episode_slug:ep.slug,
+    couple_slug:r.slug,
+    slot:r.slot,
+    label:r.slot===1 ? "Main routine" : "Routine " + r.slot,
+    dance_style:r.dance,
+    song:r.music
+  }));
+
+  if (routineRows.length) {
+    const {error} = await supabase.from("routines").upsert(routineRows,{onConflict:"id"});
+    if (error) throw error;
+  }
+
+  const firstRows = parsed.filter(r=>r.slot===1).map(r=>({
+    episode_slug:ep.slug,
+    couple_slug:r.slug,
+    dance_style:r.dance,
+    song:r.music
+  }));
+  if (firstRows.length) {
+    const {error} = await supabase.from("episode_couples").upsert(firstRows,{onConflict:"episode_slug,couple_slug"});
+    if (error) throw error;
+  }
+
+  return routineRows;
 }
 
 async function syncMetadata(ep, couples, html) {
@@ -144,30 +204,42 @@ async function syncMetadata(ep, couples, html) {
   const parsed = parseRows(section,couples);
   if (!parsed.length) return {ok:false,reason:"weekly table not published yet",source:WIKI_URL};
 
-  const rows = parsed.map(r=>({
-    episode_slug:ep.slug,
-    couple_slug:r.slug,
-    dance_style:r.dance,
-    song:r.music
-  }));
-
-  const {error} = await supabase.from("episode_couples").upsert(rows,{onConflict:"episode_slug,couple_slug"});
-  if (error) throw error;
-
+  const routineRows = await upsertRoutines(ep,parsed);
   await supabase.from("episodes").update({metadata_source_url:WIKI_URL}).eq("slug",ep.slug);
-  return {ok:true,matched:rows.length,source:WIKI_URL};
+
+  return {
+    ok:true,
+    matchedCouples:[...new Set(parsed.map(r=>r.slug))].length,
+    routines:routineRows.length,
+    source:WIKI_URL
+  };
 }
 
 async function syncResults(ep, couples, html) {
   const section = sectionForWeek(html,ep.week);
   if (!section) return {ok:false,reason:"weekly section not published yet",source:WIKI_URL};
-  const parsed = parseRows(section,couples);
-  const complete = parsed.filter(r=>Array.isArray(r.judgeScores) && Number.isFinite(r.total));
 
-  if (complete.length !== couples.length) {
+  const parsed = parseRows(section,couples);
+  if (!parsed.length) return {ok:false,reason:"weekly score table not published yet",source:WIKI_URL};
+
+  await upsertRoutines(ep,parsed);
+
+  const complete = parsed.filter(r=>Array.isArray(r.judgeScores) && Number.isFinite(r.total));
+  const activeSlugs = new Set(couples.map(c=>c.slug));
+  const completeSlugs = new Set(complete.map(r=>r.slug));
+
+  if ([...activeSlugs].some(slug=>!completeSlugs.has(slug))) {
     return {
       ok:false,
-      reason:"scores incomplete: " + complete.length + " of " + couples.length,
+      reason:"at least one active couple is missing a complete score",
+      source:WIKI_URL
+    };
+  }
+
+  if (complete.length !== parsed.length) {
+    return {
+      ok:false,
+      reason:"one or more listed routines are still missing scores",
       source:WIKI_URL
     };
   }
@@ -187,18 +259,36 @@ async function syncResults(ep, couples, html) {
     if (jErr) throw jErr;
   }
 
-  const highestTotal = Math.max(...complete.map(r=>r.total));
-  const outSlugs = complete
-    .filter(r=>/eliminated|withdrew|withdrawn/i.test(r.result))
-    .map(r=>r.slug);
-
-  const resultRows = complete.map(r=>({
-    episode_slug:ep.slug,
-    couple_slug:r.slug,
+  const routineResultRows = complete.map(r=>({
+    routine_id:routineId(ep.slug,r.slug,r.slot),
     judge_scores:r.judgeScores,
     total:r.total,
-    highest:r.total===highestTotal,
-    eliminated:outSlugs.includes(r.slug),
+    source_url:WIKI_URL,
+    verified_at:new Date().toISOString()
+  }));
+  const {error:rrErr} = await supabase.from("routine_results").upsert(routineResultRows,{onConflict:"routine_id"});
+  if (rrErr) throw rrErr;
+
+  const aggregates = {};
+  for (const r of complete) {
+    if (!aggregates[r.slug]) aggregates[r.slug]={total:0,scores:[],resultText:""};
+    aggregates[r.slug].total += r.total;
+    aggregates[r.slug].scores.push(...r.judgeScores);
+    aggregates[r.slug].resultText += " " + (r.result || "");
+  }
+
+  const highestTotal = Math.max(...Object.values(aggregates).map(x=>x.total));
+  const outSlugs = Object.entries(aggregates)
+    .filter(([,x])=>/eliminated|withdrew|withdrawn/i.test(x.resultText))
+    .map(([slug])=>slug);
+
+  const resultRows = Object.entries(aggregates).map(([slug,x])=>({
+    episode_slug:ep.slug,
+    couple_slug:slug,
+    judge_scores:x.scores,
+    total:x.total,
+    highest:x.total===highestTotal,
+    eliminated:outSlugs.includes(slug),
     source_url:WIKI_URL,
     verified_at:new Date().toISOString()
   }));
@@ -225,6 +315,7 @@ async function syncResults(ep, couples, html) {
   return {
     ok:true,
     couples:resultRows.length,
+    routines:routineResultRows.length,
     highestTotal,
     eliminated:outSlugs,
     source:WIKI_URL
