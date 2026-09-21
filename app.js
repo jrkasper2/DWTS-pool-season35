@@ -35,6 +35,12 @@
   const markReturning=username=>{ localStorage.setItem(RETURNING_KEY,"1"); if(username)localStorage.setItem(LAST_USER_KEY,username); };
   const now=()=>Date.now();
   const dt=x=>x?new Date(x):null;
+  const lastNameKey=name=>{
+    const parts=String(name||"").trim().split(/\s+/).filter(Boolean);
+    if(parts.length>1 && /^(jr\.?|sr\.?|ii|iii|iv)$/i.test(parts[parts.length-1])) parts.pop();
+    return (parts[parts.length-1]||"").toLocaleLowerCase();
+  };
+  const coupleLabel=c=>c ? c.celebrity+" + "+c.pro : "";
   const fmtDate=x=>x?new Intl.DateTimeFormat("en-US",{weekday:"long",month:"long",day:"numeric",hour:"numeric",minute:"2-digit",timeZone:"America/New_York"}).format(new Date(x))+" ET":"";
   const avatar=v=>String(v||"🪩").startsWith("data:image")
     ? '<img alt="" src="'+v+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%">'
@@ -117,7 +123,7 @@
       try { await refreshBallroom(); }
       catch(e){ return showErr(e.message); }
     }
-    const fn={home,picks,standings,results,profile}[state.view]||home;
+    const fn={home,picks,confirmation,standings,results,profile}[state.view]||home;
     await fn();
   }
 
@@ -186,7 +192,7 @@
       try {
         $("#signup").disabled=true;$("#signup").textContent="Creating your player…";
         const x=await rpc("register_player",{p_first_name:first,p_last_name:last,p_username:username,p_pin:pin,p_avatar:chosen});
-        setToken(x.token);markReturning(x.player?.username||username);state.user=x.player;state.ballroom=null;state.game=null;await render();
+        setToken(x.token);markReturning(x.player?.username||username);state.user=x.player;state.ballroom=null;state.game=null;state.view="picks";await render();
       } catch(e) {
         $("#authError").textContent=e.message;$("#signup").disabled=false;$("#signup").textContent="Create my player";
       }
@@ -198,7 +204,7 @@
       try {
         $("#login").disabled=true;$("#login").textContent="Opening the ballroom…";
         const x=await rpc("login_player",{p_username:$("#loginUser").value.trim(),p_pin:$("#loginPin").value.trim()});
-        setToken(x.token);markReturning(x.player?.username||$("#loginUser").value.trim());state.user=x.player;state.ballroom=null;state.game=null;await render();
+        setToken(x.token);markReturning(x.player?.username||$("#loginUser").value.trim());state.user=x.player;state.ballroom=null;state.game=null;state.view="picks";await render();
       } catch(e) {
         $("#authError").textContent=e.message;$("#login").disabled=false;$("#login").textContent="Enter the Ballroom";
       }
@@ -211,12 +217,12 @@
 
   function onboarding() {
     $("#main").innerHTML='<div class="auth-wrap"><section class="card auth"><div class="kicker">HOW THE GAME WORKS</div><h2>Score your way to the Mirrorball 🪩</h2><p class="muted">For each couple, predict every judge’s paddle score. Your predicted total is calculated automatically.</p>'+scoringMarkup()+'<div class="rules"><p><strong>Lock means lock.</strong> Once you submit a couple’s scores, they cannot be edited.</p><p><strong>You can play during the episode.</strong> Any prediction that is still open can be submitted until the episode ends.</p><p><strong>No peeking.</strong> Everyone’s picks stay hidden until the episode ends. Then the full group reveal opens automatically.</p></div><button id="gotIt" class="btn primary" style="width:100%">Got it — take me to the ballroom</button></section></div>';
-    $("#gotIt").onclick=async()=>{state.user=await rpc("set_onboarding_seen",{p_token:token()});await render();};
+    $("#gotIt").onclick=async()=>{state.user=await rpc("set_onboarding_seen",{p_token:token()});state.view="picks";await render();};
   }
 
   function current() {
     const ep=state.ballroom?.episode;
-    const couples=state.ballroom?.couples||[];
+    const couples=[...(state.ballroom?.couples||[])].sort((a,b)=>lastNameKey(a.celebrity).localeCompare(lastNameKey(b.celebrity))||String(a.celebrity).localeCompare(String(b.celebrity)));
     const judges=Array.isArray(ep?.judges)?ep.judges:["Carrie Ann","Derek","Bruno"];
     const preds=Object.fromEntries((state.game?.predictions||[]).map(p=>[p.routine_id,p]));
     const routines=couples.flatMap(c=>(c.routines||[]).map(r=>({...r,couple_slug:c.slug,celebrity:c.celebrity,pro:c.pro})));
@@ -283,8 +289,10 @@
     if(!ep)return seasonComplete();
     const closed=now()>=dt(ep.ends_at).getTime();
     const totalRoutines=routines.length||couples.length;
+    const lockedRoutines=Object.keys(preds).length;
+    const allRoutinesLocked=lockedRoutines>=totalRoutines;
 
-    $("#main").innerHTML='<div class="section-head"><div><div class="kicker">WEEK '+ep.week+'</div><h2 class="section-title">'+esc(ep.title)+'</h2><div class="muted tiny">'+esc(fmtDate(ep.starts_at))+'</div></div><div class="muted tiny">'+Object.keys(preds).length+'/'+totalRoutines+' routines locked</div></div>'+(closed?'<section class="card quick notice"><strong>🔒 This episode is closed.</strong><div class="muted tiny">Predictions can no longer be submitted. Results will populate automatically after verification.</div></section>':'<section class="card quick notice"><strong>Once you lock a routine, it cannot be changed.</strong><div class="muted tiny">Open predictions stay available through the live episode until it ends. On weeks with multiple scored dances, each routine gets its own prediction.</div></section>')+'<div id="couples"></div><section class="card bonus"><div class="kicker">BONUS PICKS</div><h3>Top score + elimination</h3><p class="muted tiny">5 points each. Highest score is based on the couple’s full episode total when there are multiple scored routines.</p><div class="row2"><div class="field"><label>Highest-scoring couple</label><select id="highest" '+(bonus||closed?"disabled":"")+'><option value="">Choose…</option>'+couples.map(c=>'<option value="'+c.slug+'" '+(bonus?.highest_slug===c.slug?"selected":"")+'>'+esc(c.celebrity)+'</option>').join("")+'</select></div><div class="field"><label>Eliminated couple</label><select id="elim" '+(bonus||closed?"disabled":"")+'><option value="">Choose…</option>'+couples.map(c=>'<option value="'+c.slug+'" '+(bonus?.eliminated_slug===c.slug?"selected":"")+'>'+esc(c.celebrity)+'</option>').join("")+'</select></div></div>'+(bonus?'<div class="locked">✓ Bonus picks locked</div>':closed?'<div class="muted tiny">Bonus picks closed.</div>':'<button id="lockBonus" class="btn secondary">Lock bonus picks</button>')+'</section>';
+    $("#main").innerHTML='<section class="card quick notice"><div class="kicker">YOUR NEXT EPISODE</div><strong>Week '+ep.week+' · '+esc(ep.title)+'</strong><div class="muted tiny">'+esc(fmtDate(ep.starts_at))+' · Place your picks for the upcoming episode.</div></section><div class="section-head"><div><div class="kicker">STEP '+(allRoutinesLocked?'2':'1')+' OF 2</div><h2 class="section-title">'+(allRoutinesLocked?'Choose your bonus picks':'Predict the judges’ scores')+'</h2><div class="muted tiny">'+esc(ep.title)+'</div></div><div class="muted tiny">'+lockedRoutines+'/'+totalRoutines+' routines locked</div></div>'+(closed?'<section class="card quick notice"><strong>🔒 This episode is closed.</strong><div class="muted tiny">Predictions can no longer be submitted. Results will populate automatically after verification.</div></section>':'<section class="card quick notice"><strong>Once you lock a routine, it cannot be changed.</strong><div class="muted tiny">Complete your score predictions, then lock your highest-scoring and elimination picks below.</div></section>')+'<div id="couples"></div><section class="card bonus"><div class="kicker">STEP 2 OF 2 · BONUS PICKS</div><h3>Highest score + elimination</h3><p class="muted tiny">5 points each. Both the celebrity and professional partner are shown so every pairing is clear.</p><div class="row2"><div class="field"><label>Highest-scoring couple</label><select id="highest" '+(bonus||closed?"disabled":"")+'><option value="">Choose a couple…</option>'+couples.map(c=>'<option value="'+c.slug+'" '+(bonus?.highest_slug===c.slug?"selected":"")+'>'+esc(coupleLabel(c))+'</option>').join("")+'</select></div><div class="field"><label>Eliminated couple</label><select id="elim" '+(bonus||closed?"disabled":"")+'><option value="">Choose a couple…</option>'+couples.map(c=>'<option value="'+c.slug+'" '+(bonus?.eliminated_slug===c.slug?"selected":"")+'>'+esc(coupleLabel(c))+'</option>').join("")+'</select></div></div>'+(bonus?'<div class="locked">✓ Bonus picks locked</div><button id="continueAfterBonus" class="btn primary" style="margin-top:12px">'+(allRoutinesLocked?'Finish & review my picks':'Continue with my picks')+'</button>':closed?'<div class="muted tiny">Bonus picks closed.</div>':'<button id="lockBonus" class="btn secondary">Lock bonus picks & continue</button><div id="bonusError" class="error"></div>')+'</section>';
 
     const box=$("#couples");
     couples.forEach(couple=>{
@@ -292,7 +300,7 @@
       el.className="card couple";
       const cr=(couple.routines&&couple.routines.length)?couple.routines:[{id:ep.slug+":"+couple.slug+":1",slot:1,label:"Main routine",dance_style:null,song:null}];
       const lockedCount=cr.filter(r=>preds[r.id]).length;
-      el.innerHTML='<div class="couple-head"><div class="names"><strong>'+esc(couple.celebrity)+'</strong><small>with '+esc(couple.pro)+'</small></div><span class="pill '+(lockedCount===cr.length?"locked":"")+'">'+lockedCount+'/'+cr.length+' locked</span></div><div class="routine-list"></div>';
+      el.innerHTML='<div class="couple-head"><div class="names"><strong>'+esc(couple.celebrity)+'</strong><small>Professional partner: '+esc(couple.pro)+'</small></div><span class="pill '+(lockedCount===cr.length?"locked":"")+'">'+lockedCount+'/'+cr.length+' locked</span></div><div class="routine-list"></div>';
       const list=$(".routine-list",el);
 
       cr.forEach(routine=>{
@@ -328,14 +336,36 @@
     });
 
     if(!bonus&&!closed)$("#lockBonus").onclick=async()=>{
-      const h=$("#highest").value,e=$("#elim").value;
-      if(!h||!e)return alert("Choose both bonus picks first.");
+      const h=$("#highest").value,e=$("#elim").value,btn=$("#lockBonus"),err=$("#bonusError");
+      if(err)err.textContent="";
+      if(!h||!e){ if(err)err.textContent="Choose both bonus picks before continuing."; return; }
+      if(h===e && err) err.textContent="You picked the same couple for both bonuses. That is allowed if that is your prediction.";
       if(!confirm("Lock both bonus picks? You will not be able to change them."))return;
       try{
+        btn.disabled=true;btn.textContent="Locking bonus picks…";
         await rpc("lock_bonus_picks",{p_token:token(),p_episode_slug:ep.slug,p_highest_slug:h,p_eliminated_slug:e});
-        await refreshGame();render();
-      }catch(err){alert(err.message);}
+        await refreshGame();
+        state.view="confirmation";
+        await render();
+      }catch(errObj){
+        if(err)err.textContent=errObj.message;
+        btn.disabled=false;btn.textContent="Lock bonus picks & continue";
+      }
     };
+    if(bonus&&$("#continueAfterBonus"))$("#continueAfterBonus").onclick=()=>{state.view="confirmation";render();};
+  }
+
+  async function confirmation() {
+    const {ep,couples,routines,preds,bonus}=current();
+    if(!ep)return seasonComplete();
+    const total=routines.length||couples.length;
+    const locked=Object.keys(preds).length;
+    const remaining=Math.max(0,total-locked);
+    if(!bonus){state.view="picks";return render();}
+    $("#main").innerHTML='<div class="auth-wrap"><section class="card auth"><div class="kicker">'+(remaining===0?'PICKS COMPLETE':'BONUS PICKS LOCKED')+'</div><h2>'+(remaining===0?'Your picks are locked in. 🪩':'Your bonus picks are in!')+'</h2><p class="muted">'+(remaining===0?'See you in the ballroom. Your predictions stay private until the episode ends.':('You still have '+remaining+' routine prediction'+(remaining===1?'':'s')+' to finish for Week '+ep.week+'.'))+'</p><div class="pillrow"><span class="pill">'+locked+'/'+total+' routines locked</span><span class="pill locked">✓ Bonus picks locked</span></div>'+(remaining===0?'<button id="reviewPicks" class="btn secondary" style="width:100%">Review my picks</button><button id="returnHome" class="btn ghost" style="width:100%;margin-top:10px">Return to Ballroom</button>':'<button id="finishPicks" class="btn primary" style="width:100%">Finish remaining picks</button><button id="returnHome" class="btn ghost" style="width:100%;margin-top:10px">Return to Ballroom</button>')+'</section></div>';
+    if($("#reviewPicks"))$("#reviewPicks").onclick=()=>{state.view="picks";render();};
+    if($("#finishPicks"))$("#finishPicks").onclick=()=>{state.view="picks";render();};
+    $("#returnHome").onclick=()=>{state.view="home";render();};
   }
 
   async function standings() {
