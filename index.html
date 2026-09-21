@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#160428">
+  <meta name="description" content="A Dancing with the Stars Season 35 prediction pool for friends.">
+  <title>Mirrorball Pool — Season 35</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <section id="splash" class="splash">
+    <div class="spotlight s1"></div><div class="spotlight s2"></div>
+    <div class="splash-inner">
+      <div class="kicker">DANCING WITH THE STARS · SEASON 35</div>
+      <div class="mirrorball" aria-hidden="true"><span></span></div>
+      <div class="race">RACE FOR THE</div>
+      <h1>MIRRORBALL</h1>
+      <div class="script">prediction pool</div>
+      <p>Call the judges’ scores. Pick the top couple. Predict who goes home. Chase the Mirrorball with your friends.</p>
+      <button id="enterBtn" class="btn primary">Enter the Ballroom ✨</button>
+      <button id="soundBtn" class="sound">♪ intro sound on</button>
+      <small>Unofficial fan-made friend-group game</small>
+    </div>
+  </section>
+
+  <div id="shell" class="shell hidden">
+    <header class="topbar">
+      <div><div class="kicker">SEASON 35</div><strong>🪩 Mirrorball Pool</strong></div>
+      <button id="profileChip" class="chip hidden"></button>
+    </header>
+    <main id="main"></main>
+    <nav id="nav" class="nav hidden">
+      <button data-view="home" class="active">🪩<span>Ballroom</span></button>
+      <button data-view="picks">✓<span>Picks</span></button>
+      <button data-view="standings">♛<span>Standings</span></button>
+      <button data-view="results">10<span>Results</span></button>
+      <button data-view="profile">●<span>Profile</span></button>
+    </nav>
+  </div>
+
+  <div id="modal"></div>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
