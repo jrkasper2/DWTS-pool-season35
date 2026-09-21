@@ -1,0 +1,9 @@
+{
+  "name":"Mirrorball Pool — Season 35",
+  "short_name":"Mirrorball Pool",
+  "start_url":".",
+  "display":"standalone",
+  "background_color":"#09020f",
+  "theme_color":"#160428",
+  "description":"A private Dancing with the Stars Season 35 prediction game for friends."
+}
