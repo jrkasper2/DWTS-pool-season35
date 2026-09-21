@@ -43,6 +43,14 @@ function cleanHtml(s) {
     .trim();
 }
 
+function cleanMusic(s) {
+  return cleanHtml(s)
+    .replace(/^["“]\s*/, "")
+    .replace(/\s*["”]\s*—\s*/, " — ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function norm(s) {
   return cleanHtml(s).toLowerCase()
     .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
