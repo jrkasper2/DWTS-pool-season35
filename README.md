@@ -84,11 +84,11 @@ The repository currently uses an original short ballroom/disco sting. The copyri
 
 ## Hosting
 
-The site is configured to deploy with GitHub Pages from GitHub Actions.
+The live shareable site is hosted as a public Supabase Edge site:
 
-Expected public URL:
+**https://ipakrfgvvguxbsiuqlib.supabase.co/functions/v1/mirrorball-site**
 
-**https://jrkasper2.github.io/DWTS-pool-season35/**
+GitHub Pages remains available as an optional second host. Its workflow is manual-only until Pages is enabled in the repository settings.
 
 ## Disclaimer
 
