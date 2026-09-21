@@ -224,9 +224,30 @@
     const {ep,couples,preds}=current();
     if(!ep)return seasonComplete();
     const st=episodeStatus(ep),locked=Object.keys(preds).length;
-    $("#main").innerHTML='<section class="card hero"><div class="kicker">WEEK '+ep.week+' · '+esc(ep.title).toUpperCase()+'</div><h1>Race for the Mirrorball</h1><p>'+esc(fmtDate(ep.starts_at))+'</p><div class="pillrow"><span class="pill '+st.kind+'">'+esc(st.label)+'</span><span class="pill">'+locked+'/'+couples.length+' couples locked</span><span class="pill">🔒 friends’ picks hidden until the episode ends</span></div><button id="goPicks" class="btn primary">Make predictions</button> <button id="howBtn" class="btn ghost">How scoring works</button></section><div class="grid2"><section class="card quick"><div class="kicker">YOUR PROGRESS</div><div class="big">'+locked+'/'+couples.length+'</div><div class="muted tiny">couple predictions locked for Week '+ep.week+'</div></section><section class="card quick"><div class="kicker">OFFICIAL RESULTS</div><div class="big">Auto</div><div class="muted tiny">scores sync after the episode and recalculate the leaderboard</div></section></div><section class="card quick source-card"><div class="kicker">DATA SOURCES</div><p class="muted tiny">Weekly score tables are synced automatically from the structured Season 35 scorecard, with ABC, Parade, and Entertainment Weekly kept as reference sources.</p></section>';
+    $("#main").innerHTML='<section class="card hero"><div class="kicker">WEEK '+ep.week+' · '+esc(ep.title).toUpperCase()+'</div><h1>Race for the Mirrorball</h1><p>'+esc(fmtDate(ep.starts_at))+'</p><div class="pillrow"><span class="pill '+st.kind+'">'+esc(st.label)+'</span><span class="pill">'+locked+'/'+couples.length+' couples locked</span><span class="pill">🔒 friends’ picks hidden until the episode ends</span></div><button id="goPicks" class="btn primary">Make predictions</button> <button id="shareBtn" class="btn ghost">Share the pool</button> <button id="howBtn" class="btn ghost">How scoring works</button></section><div class="grid2"><section class="card quick"><div class="kicker">YOUR PROGRESS</div><div class="big">'+locked+'/'+couples.length+'</div><div class="muted tiny">couple predictions locked for Week '+ep.week+'</div></section><section class="card quick"><div class="kicker">OFFICIAL RESULTS</div><div class="big">Auto</div><div class="muted tiny">scores sync after the episode and recalculate the leaderboard</div></section></div><section class="card quick source-card"><div class="kicker">DATA SOURCES</div><p class="muted tiny">Weekly score tables are synced automatically from the structured Season 35 scorecard, with ABC, Parade, and Entertainment Weekly kept as reference sources.</p></section>';
     $("#goPicks").onclick=()=>{state.view="picks";render();};
+    $("#shareBtn").onclick=sharePool;
     $("#howBtn").onclick=()=>showScoring();
+  }
+
+  async function sharePool() {
+    const url=location.href.split("#")[0];
+    const shareData={
+      title:"Mirrorball Pool — Season 35",
+      text:"Join our Dancing with the Stars Season 35 prediction pool! 🪩",
+      url
+    };
+    try {
+      if(navigator.share) await navigator.share(shareData);
+      else {
+        await navigator.clipboard.writeText(url);
+        alert("Pool link copied!");
+      }
+    } catch(e) {
+      if(e?.name!=="AbortError") {
+        try { await navigator.clipboard.writeText(url); alert("Pool link copied!"); } catch {}
+      }
+    }
   }
 
   function showScoring() {
